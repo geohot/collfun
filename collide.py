@@ -1,5 +1,71 @@
 from hexdump import hexdump
 import struct
+from pprint import pprint
+
+class Characteristic(object):
+  CONDITIONS = {
+    '?': [(0,0), (0,1), (1,0), (1,1)],
+    'x': [(0,1), (1,0)],
+    '-': [(0,0), (1,1)],
+    '0': [(0,0)],
+    'u': [(1,0)],
+    'n': [(0,1)],
+    '1': [(1,1)],
+    '#': []}
+
+  def __init__(self, x):
+    if type(x) is list or type(x) is str:
+      assert len(x) == 32
+      self.bit = list(x)
+    else:
+      self.bit = []
+      for i in range(32):
+        if (x>>i)&1:
+          self.bit.append('x')
+        else:
+          self.bit.append('-')
+
+  def __str__(self):
+    return ''.join(self.bit)[::-1]
+
+  # rotate right
+  def __rshift__(self, num):
+    return Characteristic(self.bit[num:]+self.bit[0:num])
+  def __lshift__(self, num):
+    return self >> (32-num)
+
+
+def read_characteristic(name):
+  a = []
+  w = []
+  for ln in open(name).read().split("\n"):
+    lnn = ln.split(" ")
+    if len(lnn) > 1:
+      a.append(Characteristic(lnn[1]))
+    if len(lnn) > 2:
+      w.append(Characteristic(lnn[2]))
+  return a,w
+
+
+a,w = read_characteristic("dc_char")
+
+print "A:"
+for i in a:
+  print i
+print "W:"
+for i in w:
+  print i
+
+cc = Characteristic(1)
+print cc
+cc <<= 1
+print cc
+cc <<= 1
+print cc
+#print Characteristic(1)<<2
+
+exit(0)
+
 
 def rl(a, i):
   return (a << i) & 0xFFFFFFFF | (a >> (32-i))
@@ -13,15 +79,6 @@ def xor(a, b):
 def tonum(a, endian="big"):
   return list(struct.unpack(("!" if endian == "big" else "")+"I"*(len(a)/4), a))
 
-def bprint(a):
-  out = []
-  for i in range(32):
-    if a & 0x80000000:
-      out.append('o')
-    else:
-      out.append('-')
-    a <<= 1
-  return ''.join(out)
 
 def dump32(a):
   out = "%3d " % 0
@@ -35,21 +92,24 @@ def dump32(a):
 def ft(x,y,z,i):
   i /= 20
   if i == 0:
+    # IF
     return z ^ (x & (y ^ z))
-  elif i == 1 or i == 3:
-    return x ^ y ^ z
   elif i == 2:
+    # MAJ
     return (x & y) | (x & z) | (y & z)
+  elif i == 1 or i == 3:
+    # XOR
+    return x ^ y ^ z
 
 def ac(i):
   return [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
 
-def expand(w, this_round=0):
+def expand(w, this_round=0, total_length=80):
   """SHA-1 expansion function from round this_round."""
   while len(w) < (this_round + 16):
     w = [rr(w[15], 1) ^ w[12] ^ w[7] ^ w[1]] + w
 
-  while len(w) < 80:
+  while len(w) < total_length:
     w.append(rl(w[-3] ^ w[-8] ^ w[-14] ^ w[-16], 1))
   return w
 
@@ -68,7 +128,24 @@ def sha1(w):
     q.append(qt1 & 0xFFFFFFFF)
   return q
 
+
+def dv_to_differential(dv):
+  """Expand a disturbance vector to a message differential"""
+  dv = expand(dv[0:16], this_round=6, total_length=86)
+
+  ret = [0]*(len(dv)+5)
+  for i in range(len(dv)):
+    ret[i+0] ^= dv[i]
+    ret[i+1] ^= rl(dv[i], 5)
+    ret[i+2] ^= dv[i]
+    ret[i+3] ^= rl(dv[i], 30)
+    ret[i+4] ^= rl(dv[i], 30)
+    ret[i+5] ^= rl(dv[i], 30)
+  return ret[6:86]
+    
+
 dv = expand([0,0,0,0,0x80000000,0,0,0,0,0,0x80000000,0,0x80000000,0,0,0], 43)
+diff = dv_to_differential(dv)
 
 """
 for i in range(len(dv)):
@@ -76,6 +153,7 @@ for i in range(len(dv)):
 """
 
 #print len(dv)
+
 
 
 
@@ -88,8 +166,8 @@ w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
 
 mm1 = sha1(expand(m1[16:32]))
 mm2 = sha1(expand(m2[16:32]))
-w = xor(expand(m1[16:32]), expand(m2[16:32]))
-q = xor(mm1, mm2)
+#w = xor(expand(m1[16:32]), expand(m2[16:32]))
+a = xor(mm1, mm2)
 
 #print mm1
 #print mm2
@@ -97,11 +175,12 @@ q = xor(mm1, mm2)
 #dump32(xor(mm1, mm2))
 
 for i in range(-5, 80):
-  print "%3d %32s %32s   %32s" % (i,
-    bprint(w[i]) if i >= 0 else "",
-    bprint(q[i+5]),
-    bprint(dv[i]) if i >= 0 else "",
+  print "%3d %32s %32s" % (i,
+    Characteristic(a[i+5]),
+    Characteristic(diff[i]) if i >= 0 else "",
     )
+    #Characteristic(dv[i]) if i >= 0 else "",
+    #bprint(w[i]) if i >= 0 else "",
 
 
 
