@@ -1,6 +1,7 @@
 from hexdump import hexdump
 import struct
 from pprint import pprint
+from collections import defaultdict
 
 def ft(x,y,z,i):
   i /= 20
@@ -17,34 +18,44 @@ def ac(i):
 class Bit(object):
   """Bit is a Random Variable over [(0,0), (0,1), (1,0), (1,1)]"""
 
+  BITPATTERNS = [(0,0),(0,1),(1,0),(1,1)]
+  BITPATTERNS_IDX = zip(range(len(BITPATTERNS)), BITPATTERNS)
+
   # uniform prior
+  # could use fractions here instead of floats
   CONDITIONS = {
-    '?': {(0,0): 0.25, (0,1): 0.25, (1,0): 0.25, (1,1): 0.25},
-    'x': {(0,1): 0.5, (1,0): 0.5},
-    '-': {(0,0): 0.5, (1,1): 0.5},
-    '0': {(0,0): 1.0}, '1': {(1,1): 1.0},
-    'u': {(1,0): 1.0}, 'n': {(0,1): 1.0}}
+    '?': [0.25, 0.25, 0.25, 0.25],
+    'x': [0.00, 0.50, 0.50, 0.00],
+    '-': [0.50, 0.00, 0.00, 0.50],
+    '0': [1.00, 0.00, 0.00, 0.00],
+    'n': [0.00, 1.00, 0.00, 0.00],
+    'u': [0.00, 0.00, 1.00, 0.00],
+    '1': [0.00, 0.00, 0.00, 1.00]}
 
   def __init__(self, c):
     if type(c) is str:
       self.prob = self.CONDITIONS[c]
     else:
+      # must be normalized
+      assert sum(c) == 1.00
       self.prob = c
 
   def __str__(self):
     for c in self.CONDITIONS:
-      if self.CONDITIONS[c].keys() == self.prob.keys():
+      if self.CONDITIONS[c] == self.prob:
         return c
     return '!'
         
   # bit level ops
   def bitops(self, rhs, fxn):
-    ret = {}
-    for x in self.prob:
-      for y in rhs.prob:
-        key = (fxn(x[0], y[0]), fxn(x[1], y[1]))
-        if key not in ret:
-          ret[key] = 0.0
+    """Takes in two length 4 probability vectors
+       self.prob and rhs.prob
+       And applies fxn to them"""
+
+    ret = [0.00]*4
+    for x, X in self.BITPATTERNS_IDX:
+      for y, Y in self.BITPATTERNS_IDX:
+        key = self.BITPATTERNS.index((fxn(X[0], Y[0]), fxn(X[1], Y[1])))
         ret[key] += self.prob[x] * rhs.prob[y]
     # should be normalized
     return Bit(ret)
@@ -56,6 +67,17 @@ class Bit(object):
   def __xor__(self, rhs):
     return self.bitops(rhs, lambda x,y: x^y)
 
+  def add(*args):
+    """Add a list of bits, output a dictionary of probabilities"""
+    acc = {(0,0): 1.00}
+    for bit in args:
+      nacc = defaultdict(float)
+      for k in acc:
+        for x, X in Bit.BITPATTERNS_IDX:
+          if bit.prob[x] > 0:
+            nacc[(k[0] + X[0], k[1] + X[1])] += bit.prob[x] * acc[k]
+      acc = nacc
+    return acc
 
 
 class Characteristic(object):
@@ -83,6 +105,33 @@ class Characteristic(object):
   def __lshift__(self, num):
     return self >> (32-num)
 
+  # addition is hard, and happens at the byte level
+  def add(*args):
+    """Add a list of words, output a Characteristic of the added words. Handle carries."""
+    ret = []
+    # loop over bits
+    # this is wrong because both carries depend on each other 
+    carry = {(0,0): 1.0}
+    for i in range(32):
+      # loop over each bit we add
+      bits = map(lambda x: x.bits[i], args)
+      tb = Bit.add(*bits)
+      tbn = defaultdict(float)
+
+      # add in the old carry
+      for k in tb:
+        for c in carry:
+          tbn[(k[0] + c[0], k[1] + c[1])] = tb[k] * carry[c]
+
+      # tb can be expanded into, this_bit, carry, and double_carry
+      ncarry = defaultdict(float)  # replace with SparseBit?
+      t0 = [0.0]*4
+      for k in tb:
+        t0[Bit.BITPATTERNS.index((k[0]&1, k[1]&1))] += tb[k]
+        ncarry[(k[0]>>1, k[1]>>1)] += tb[k]
+      ret.append(Bit(t0))
+    return Characteristic(ret)
+
   # and, or, xor happen at the bit level
   def __and__(self, rhs):
     return Characteristic( [x[0] & x[1] for x in zip(self.bits, rhs.bits)] )
@@ -107,18 +156,19 @@ def load_characteristics(name):
 A,W = load_characteristics("dc_char")
 
 for i in range(-4, len(A)-4):
-  print "%3d %32s %32s   " % (i, A[i+4], "" if i < 0 or i >= len(W) else W[i], ),
+  print "%3d %32s " % (i, A[i+4], ),
   if i >= 0 and i < len(W):
     p1 = A[i+4] << 5 
     p2 = A[i] << 30
     p3 = W[i]
     p4 = ft(A[i+3], A[i+2] << 30, A[i+1] << 30, i)
-    print p4, 
-    #p5 = ac(i)
-    #qt1 = ft(A[2], rl(q[-3], 30), rl(q[-4], 30), t)
-    #(a,b,c,d,e) = A[i:i+5]
-    #print p1, p2, p3,
-  print ""
+    p5 = Characteristic(ac(i))
+
+    out = Characteristic.add(p1,p2,p3,p4,p5)
+
+    print "%32s %32s" % (W[i], out)
+  else:
+    print ""
 
 
 exit(0)
