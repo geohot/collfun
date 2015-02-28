@@ -2,40 +2,97 @@ from hexdump import hexdump
 import struct
 from pprint import pprint
 
-class Characteristic(object):
-  CONDITIONS = {
-    '?': [(0,0), (0,1), (1,0), (1,1)],
-    'x': [(0,1), (1,0)],
-    '-': [(0,0), (1,1)],
-    '0': [(0,0)],
-    'u': [(1,0)],
-    'n': [(0,1)],
-    '1': [(1,1)],
-    '#': []}
+def ft(x,y,z,i):
+  i /= 20
+  if i == 0:
+    return z ^ (x & (y ^ z))   # IF
+  elif i == 2:
+    return (x & y) | (x & z) | (y & z)   # MAJ
+  elif i == 1 or i == 3:
+    return x ^ y ^ z   # XOR
 
-  def __init__(self, x):
-    if type(x) is list or type(x) is str:
-      assert len(x) == 32
-      self.bit = list(x)
+def ac(i):
+  return [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
+
+class Bit(object):
+  """Bit is a Random Variable over [(0,0), (0,1), (1,0), (1,1)]"""
+
+  # uniform prior
+  CONDITIONS = {
+    '?': {(0,0): 0.25, (0,1): 0.25, (1,0): 0.25, (1,1): 0.25},
+    'x': {(0,1): 0.5, (1,0): 0.5},
+    '-': {(0,0): 0.5, (1,1): 0.5},
+    '0': {(0,0): 1.0}, '1': {(1,1): 1.0},
+    'u': {(1,0): 1.0}, 'n': {(0,1): 1.0}}
+
+  def __init__(self, c):
+    if type(c) is str:
+      self.prob = self.CONDITIONS[c]
     else:
-      self.bit = []
-      for i in range(32):
-        if (x>>i)&1:
-          self.bit.append('x')
-        else:
-          self.bit.append('-')
+      self.prob = c
 
   def __str__(self):
-    return ''.join(self.bit)[::-1]
+    for c in self.CONDITIONS:
+      if self.CONDITIONS[c].keys() == self.prob.keys():
+        return c
+    return '!'
+        
+  # bit level ops
+  def bitops(self, rhs, fxn):
+    ret = {}
+    for x in self.prob:
+      for y in rhs.prob:
+        key = (fxn(x[0], y[0]), fxn(x[1], y[1]))
+        if key not in ret:
+          ret[key] = 0.0
+        ret[key] += self.prob[x] * rhs.prob[y]
+    # should be normalized
+    return Bit(ret)
 
-  # rotate right
+  def __and__(self, rhs):
+    return self.bitops(rhs, lambda x,y: x&y)
+  def __or__(self, rhs):
+    return self.bitops(rhs, lambda x,y: x|y)
+  def __xor__(self, rhs):
+    return self.bitops(rhs, lambda x,y: x^y)
+
+
+
+class Characteristic(object):
+  def __init__(self, x):
+    if type(x) is list:
+      assert len(x) == 32
+      self.bits = x
+    elif type(x) is str:
+      assert len(x) == 32
+      self.bits = map(lambda x: Bit(x), list(x)[::-1])
+    else:
+      self.bits = []
+      for i in range(32):
+        if (x>>i)&1:
+          self.bits.append(Bit('1'))
+        else:
+          self.bits.append(Bit('0'))
+
+  def __str__(self):
+    return ''.join(map(str, self.bits))[::-1]
+
+  # rotations happen at the byte level
   def __rshift__(self, num):
-    return Characteristic(self.bit[num:]+self.bit[0:num])
+    return Characteristic(self.bits[num:]+self.bits[0:num])
   def __lshift__(self, num):
     return self >> (32-num)
 
+  # and, or, xor happen at the bit level
+  def __and__(self, rhs):
+    return Characteristic( [x[0] & x[1] for x in zip(self.bits, rhs.bits)] )
+  def __or__(self, rhs):
+    return Characteristic( [x[0] | x[1] for x in zip(self.bits, rhs.bits)] )
+  def __xor__(self, rhs):
+    return Characteristic( [x[0] ^ x[1] for x in zip(self.bits, rhs.bits)] )
 
-def read_characteristic(name):
+
+def load_characteristics(name):
   a = []
   w = []
   for ln in open(name).read().split("\n"):
@@ -47,22 +104,22 @@ def read_characteristic(name):
   return a,w
 
 
-a,w = read_characteristic("dc_char")
+A,W = load_characteristics("dc_char")
 
-print "A:"
-for i in a:
-  print i
-print "W:"
-for i in w:
-  print i
+for i in range(-4, len(A)-4):
+  print "%3d %32s %32s   " % (i, A[i+4], "" if i < 0 or i >= len(W) else W[i], ),
+  if i >= 0 and i < len(W):
+    p1 = A[i+4] << 5 
+    p2 = A[i] << 30
+    p3 = W[i]
+    p4 = ft(A[i+3], A[i+2] << 30, A[i+1] << 30, i)
+    print p4, 
+    #p5 = ac(i)
+    #qt1 = ft(A[2], rl(q[-3], 30), rl(q[-4], 30), t)
+    #(a,b,c,d,e) = A[i:i+5]
+    #print p1, p2, p3,
+  print ""
 
-cc = Characteristic(1)
-print cc
-cc <<= 1
-print cc
-cc <<= 1
-print cc
-#print Characteristic(1)<<2
 
 exit(0)
 
@@ -89,20 +146,6 @@ def dump32(a):
   print out
 
 
-def ft(x,y,z,i):
-  i /= 20
-  if i == 0:
-    # IF
-    return z ^ (x & (y ^ z))
-  elif i == 2:
-    # MAJ
-    return (x & y) | (x & z) | (y & z)
-  elif i == 1 or i == 3:
-    # XOR
-    return x ^ y ^ z
-
-def ac(i):
-  return [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
 
 def expand(w, this_round=0, total_length=80):
   """SHA-1 expansion function from round this_round."""
