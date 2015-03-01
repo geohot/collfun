@@ -26,6 +26,7 @@ def load_characteristics(name):
       w.append(Characteristic(lnn[2]))
   return a,w
 
+"""
 A,W = load_characteristics("dc_char")
 
 for i in range(-4, len(A)-4):
@@ -43,15 +44,11 @@ for i in range(-4, len(A)-4):
     print "%32s   %32s  %f" % (W[i], out, Pu)
   else:
     print ""
+"""
 
 def tonum(a, endian="big"):
   return list(struct.unpack(("!" if endian == "big" else "")+"I"*(len(a)/4), a))
 
-w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
-print w
-print tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
-
-exit(0)
 
 
 def rl(a, i):
@@ -86,12 +83,18 @@ def expand(w, this_round=0, total_length=80):
 
 def sha1(w):
   """Compute SHA-1 over w and return q"""
-  #iv = tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
-  iv = tonum("4633027d75b7a647d7e23d71915954dc3b81f936".decode("hex"))
+  iv = tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
+  #iv = tonum("4633027d75b7a647d7e23d71915954dc3b81f936".decode("hex"))
   q = [rr(iv[4], 30), rr(iv[3], 30), rr(iv[2], 30), iv[1], iv[0]]
+
+  print "Q", q
+
 
   for t in range(0, 80):
     qt1 = ft(q[-2], rl(q[-3], 30), rl(q[-4], 30), t)
+    if t < 10:
+      print hex(q[-2]), hex(rl(q[-3], 30)), hex(rl(q[-4], 30)), \
+        "=", hex(qt1)
     qt1 += ac(t)
     qt1 += w[t]
     qt1 += rl(q[-1], 5)
@@ -114,6 +117,16 @@ def dv_to_differential(dv):
     ret[i+5] ^= rl(dv[i], 30)
   return ret[6:86]
     
+
+
+w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
+print w
+print tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
+
+print map(hex, expand(w))
+print map(hex, sha1(expand(w)))
+
+exit(0)
 
 dv = expand([0,0,0,0,0x80000000,0,0,0,0,0,0x80000000,0,0x80000000,0,0,0], 43)
 diff = dv_to_differential(dv)
