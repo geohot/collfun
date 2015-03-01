@@ -44,6 +44,12 @@ for i in range(-4, len(A)-4):
   else:
     print ""
 
+def tonum(a, endian="big"):
+  return list(struct.unpack(("!" if endian == "big" else "")+"I"*(len(a)/4), a))
+
+w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
+print w
+print tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
 
 exit(0)
 
@@ -57,8 +63,6 @@ def rr(a, i):
 def xor(a, b):
   return [x^y for x,y in zip(a,b)]
 
-def tonum(a, endian="big"):
-  return list(struct.unpack(("!" if endian == "big" else "")+"I"*(len(a)/4), a))
 
 
 def dump32(a):
@@ -127,7 +131,6 @@ for i in range(len(dv)):
 m1 = tonum("bc 7e 39 3a 04 70 f6 84 e0 a4 84 de a5 56 87 5a cd df f9 c8 2d 02 01 6b 86 0e e7 f9 11 e1 84 18 71 bf bf f1 06 70 95 c9 ed 44 af ee 78 12 24 09 a3 b2 eb 2e 16 c0 cf c2 06 c5 20 28 10 38 3c 2b 73 e6 e2 c8 43 7f b1 3e 4e 4d 5d b6 e3 83 e0 1d 7b ea 24 2c 2b b6 30 54 68 45 b1 43 0c 21 94 ab fb 52 36 be 2b c9 1e 19 1d 11 bf 8f 66 5e f9 ab 9f 8f e3 6a 40 2c bf 39 d7 7c 1f b4 3c b0 08 72".replace(" ", "").decode("hex"))
 m2 = tonum("bc 7e 39 3a 04 70 f6 84 e0 a4 84 de a5 56 87 5a cd df f9 c8 2d 02 01 6b 86 0e e7 f9 11 e1 84 18 71 bf bf f1 06 70 95 c9 ed 44 af ee 78 12 24 09 a3 b2 eb 2e 16 c0 cf c2 06 c5 20 28 10 38 3c 2b 7f e6 e2 ca 83 7f b1 2e fa 4d 5d aa df 83 e0 19 c7 ea 24 36 0b b6 30 44 4c 45 b1 5f e0 21 94 bf f7 52 36 bc eb c9 1e 09 a9 11 bf 93 4a 5e f9 af 23 8f e3 72 f0 2c bf 29 d7 7c 1f b8 84 b0 08 62".replace(" ", "").decode("hex"))
 
-w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
 #q = sha1(expand(w))
 #print m1[0:16] == m2[0:16]
 
