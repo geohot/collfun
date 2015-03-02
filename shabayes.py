@@ -232,7 +232,10 @@ def load_sha1_example_data(G):
 
   for i in range(len(W_hello)):
     for j in range(32):
-      G["W_%d_%d" % (i,j)].fix( ((W_hello[i]>>j)&1) )
+      if i == 4 and j == 30:
+        G["W_%d_%d" % (i,j)].setProbs([0.5, 0.5])
+      else:
+        G["W_%d_%d" % (i,j)].fix( ((W_hello[i]>>j)&1) )
 
   for i in range(len(A_iv)):
     for j in range(32):
