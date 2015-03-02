@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import itertools
 import logging
+import flask
 
 log = logging.getLogger('MyLogger')
 log.setLevel(logging.DEBUG)
@@ -48,7 +49,6 @@ def carryc_1(w, a, f, e, c_in):
 def xor5(x1, x2, x3, x4):
   return x1 ^ x2 ^ x3 ^ x4
 
-
 # Bit Random Variables
 #   W_(0,79)_(0,31)   -- 80*32 --  4 states
 #   A_(-4, 80)_(0,31) -- 85*32 --  4 states
@@ -61,6 +61,7 @@ class Variable(object):
     self.probs = None
     self.name = name
     self.dim = dim
+    self.qt = None
     self.inFactors = []
 
   def __str__(self):
@@ -70,10 +71,16 @@ class Variable(object):
       return '0'
     return '?'
 
+  def setProbs(self, p):
+    self.probs = p
+    if self.qt != None:
+      self.qt.setText(str(self))
+
   def fix(self, x):
     """Concentrate all probability in one place"""
-    self.probs = [0.0]*self.dim
-    self.probs[x] = 1.0
+    probs = [0.0]*self.dim
+    probs[x] = 1.0
+    self.setProbs(probs)
 
 class Factor(object):
   def __init__(self, matrix, rvs):
@@ -93,7 +100,7 @@ class Factor(object):
             nmat += mat[i] * rv.probs[i]
           mat = nmat
 
-      self.rvs[-1].probs = list(mat)
+      self.rvs[-1].setProbs(list(mat))
       #print "setting ", self.rvs[-1].name, self.rvs[-1].probs
       return True
     return False
@@ -217,12 +224,9 @@ def build_sha1_FactorGraph(rounds):
           "C_%d_%d" % (i, j)])
 
   return G
- 
-if __name__ == "__main__":
-  ROUNDS = 80
 
-  G = build_sha1_FactorGraph(ROUNDS)
 
+def load_sha1_example_data(G):
   W_hello = [1751477356, 1870659584, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40]
   A_iv = [256608195, 1086935512, 1659597818, 4023233417, 1732584193]
 
@@ -233,6 +237,86 @@ if __name__ == "__main__":
   for i in range(len(A_iv)):
     for j in range(32):
       G["A_%d_%d" % (i-4,j)].fix( ((A_iv[i]>>j)&1) )
+
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+        QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget)
+
+class SHA1FactorGraph(QWidget):
+  def __init__(self, parent=None):
+    super(SHA1FactorGraph, self).__init__(parent)
+
+    # construct the graph
+    self.rounds = 80
+    self.G = build_sha1_FactorGraph(self.rounds)
+
+    # display the Ws
+    WLayout = QGridLayout()
+    WLayout.setSpacing(0)
+    for i in range(0,4):
+      WLayout.addWidget(QLabel(""), i, 0)
+    WLayout.addWidget(QLabel(""), self.rounds+4, 0)
+
+    for i in range(self.rounds):
+      for j in range(32):
+        widget = QLabel("#")
+        self.G["W_%d_%d" % (i,j)].qt = widget
+        WLayout.addWidget(widget, i+4, j)
+
+    # display the As
+    ALayout = QGridLayout()
+    ALayout.setSpacing(0)
+    for i in range(-4, self.rounds+1):
+      for j in range(32):
+        widget = QLabel("#")
+        self.G["A_%d_%d" % (i,j)].qt = widget
+        ALayout.addWidget(widget, i+4, j)
+
+    Buttons = QVBoxLayout()
+
+    computeButton = QPushButton("&Compute")
+    computeButton.clicked.connect(self.compute)
+    Buttons.addWidget(computeButton)
+
+    quitButton = QPushButton("&Quit")
+    quitButton.clicked.connect(sys.exit)
+    Buttons.addWidget(quitButton)
+
+    mainLayout = QHBoxLayout()
+    mainLayout.addLayout(WLayout)
+    mainLayout.addLayout(ALayout)
+    mainLayout.addLayout(Buttons)
+
+    # load the graph with example data
+    load_sha1_example_data(self.G)
+
+    self.setLayout(mainLayout)
+    self.setWindowTitle("SHA1 Factor Graph")
+
+  def compute(self):
+    self.G.compute()
+
+
+
+ 
+if __name__ == "__main__":
+  import sys
+  from PyQt5.QtWidgets import QApplication
+
+  app = QApplication(sys.argv)
+  
+  g = SHA1FactorGraph()
+  g.show()
+
+  sys.exit(app.exec_()) 
+
+"""
+  ROUNDS = 80
+  G = build_sha1_FactorGraph(ROUNDS)
+
+  exit(0)
+
 
   G.compute()
 
@@ -255,4 +339,5 @@ if __name__ == "__main__":
   print map(hex, outt)
 
   #print hex(out + A_iv[0])
+"""
 
