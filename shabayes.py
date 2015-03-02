@@ -1,8 +1,15 @@
 import sys
 import numpy as np
+import networkx as nx
 import itertools
 import logging
 import flask
+import time
+
+from PyQt5 import QtGui
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+        QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget)
 
 log = logging.getLogger('MyLogger')
 log.setLevel(logging.DEBUG)
@@ -69,12 +76,32 @@ class Variable(object):
       return '1'
     elif self.probs == [1.0, 0.0]:
       return '0'
+    elif self.probs == None:
+      return '#'
     return '?'
+
+  def neighbors(self, depth):
+    ret = {self: 0}
+    for i in range(1, depth+1):
+      new = set()
+      for k in ret:
+        for factor in k.inFactors:
+          #print i, factor.name, map(lambda x: x.name, factor.rvs)
+          for rv in factor.rvs:
+            if rv not in ret:
+              new.add(rv)
+      for rv in new:
+        ret[rv] = i
+        
+    return ret
+
+  def update(self):
+    if self.qt != None:
+      self.qt.setText(str(self))
 
   def setProbs(self, p):
     self.probs = p
-    if self.qt != None:
-      self.qt.setText(str(self))
+    self.update()
 
   def fix(self, x):
     """Concentrate all probability in one place"""
@@ -83,9 +110,10 @@ class Variable(object):
     self.setProbs(probs)
 
 class Factor(object):
-  def __init__(self, matrix, rvs):
+  def __init__(self, name, matrix, rvs):
     self.matrix = matrix
     self.rvs = rvs
+    self.name = name
     for rv in rvs:
       rv.inFactors.append(self)
 
@@ -119,8 +147,25 @@ class FactorGraph(object):
     for k in self.variables:
       self.variables[k].probs = None
 
+  def dot(self, filename):
+    log.debug("start dot file generation")
+
+    g = nx.DiGraph()
+    for k in self.variables:
+      g.add_node(k)
+
+    for f in self.factors:
+      for rv in f.rvs[:-1]:
+        g.add_edge(rv.name, f.rvs[-1].name)
+
+    log.debug("constructed graph has %d nodes and %d edges" % (g.number_of_nodes(), g.number_of_edges()))
+
+    nx.write_dot(g, filename)
+    log.debug("wrote %s" % filename)
+
   def compute(self):
     did_compute = True
+    start = time.time()
     rounds = 0
     var = 0
     while did_compute:
@@ -130,7 +175,7 @@ class FactorGraph(object):
         if f.compute():
           var += 1
           did_compute = True
-    log.debug("%d variables computed in %d rounds" % (var, rounds))
+    log.debug("%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start))
 
   def addVariable(self, name, dim):
     self.variables[name] = Variable(name, dim)
@@ -148,42 +193,42 @@ class FactorGraph(object):
 
       #print "%8s %3d %3d" % (name, np.product(dims[0:ins]), np.product(dims)), dims[0:ins], dims[ins:]
 
-    self.factors.append(Factor(self.mats[name], rvs))
+    self.factors.append(Factor(name, self.mats[name], rvs))
 
-def build_sha1_FactorGraph(rounds):
+def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()
 
   # add W's, F's, C's
   for i in range(rounds):
-    for j in range(32):
+    for j in range(bits):
       G.addVariable("W_%d_%d" % (i,j), 2)
       G.addVariable("F_%d_%d" % (i,j), 2)
-    for j in range(31):
+    for j in range(bits-1):
       G.addVariable("C_%d_%d" % (i,j), 5)
 
   # add A's
   for i in range(-4, rounds+1):
-    for j in range(32):
+    for j in range(bits):
       G.addVariable("A_%d_%d" % (i,j), 2)
 
   # add linear W factors
   for i in range(16, rounds):
-    for j in range(32):
+    for j in range(bits):
       G.addFactor(xor5, [
         "W_%d_%d" % (i-16, j),
         "W_%d_%d" % (i-14, j),
         "W_%d_%d" % (i-8, j),
         "W_%d_%d" % (i-3, j),
-        "W_%d_%d" % (i, (j+1) % 32)])
+        "W_%d_%d" % (i, (j+1) % bits)])
 
   # add boolean F factors
   for i in range(rounds):
     fxn = [f_if, f_xor, f_maj, f_xor][i/20]
-    for j in range(32):
+    for j in range(bits):
       G.addFactor(fxn, [
         "A_%d_%d" % (i-1, j),
-        "A_%d_%d" % (i-2, (j+2) % 32),
-        "A_%d_%d" % (i-3, (j+2) % 32),
+        "A_%d_%d" % (i-2, (j+2) % bits),
+        "A_%d_%d" % (i-3, (j+2) % bits),
         "F_%d_%d" % (i, j)])
 
   # add addition bullshit
@@ -193,33 +238,33 @@ def build_sha1_FactorGraph(rounds):
     fxn = [add_0, add_1][(k>>j)&1]
     G.addFactor(fxn, [
       "W_%d_%d" % (i, j),
-      "A_%d_%d" % (i-0, (j+(32-5)) % 32),
+      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
       "F_%d_%d" % (i, j),
-      "A_%d_%d" % (i-4, (j+2) % 32),
+      "A_%d_%d" % (i-4, (j+2) % bits),
       "A_%d_%d" % (i+1, j)])
     fxn = [carry_0, carry_1][(k>>j)&1]
     G.addFactor(fxn, [
       "W_%d_%d" % (i, j),
-      "A_%d_%d" % (i-0, (j+(32-5)) % 32),
+      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
       "F_%d_%d" % (i, j),
-      "A_%d_%d" % (i-4, (j+2) % 32),
+      "A_%d_%d" % (i-4, (j+2) % bits),
       "C_%d_%d" % (i, j)])
-    for j in range(1, 32):
+    for j in range(1, bits):
       fxn = [addc_0, addc_1][(k>>j)&1]
       G.addFactor(fxn, [
         "W_%d_%d" % (i, j),
-        "A_%d_%d" % (i-0, (j+(32-5)) % 32),
+        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
         "F_%d_%d" % (i, j),
-        "A_%d_%d" % (i-4, (j+2) % 32),
+        "A_%d_%d" % (i-4, (j+2) % bits),
         "C_%d_%d" % (i, j-1),
         "A_%d_%d" % (i+1, j)])
-      if j != 31:
+      if j != bits-1:
         fxn = [carryc_0, carryc_1][(k>>j)&1]
         G.addFactor(fxn, [
           "W_%d_%d" % (i, j),
-          "A_%d_%d" % (i-0, (j+(32-5)) % 32),
+          "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
           "F_%d_%d" % (i, j),
-          "A_%d_%d" % (i-4, (j+2) % 32),
+          "A_%d_%d" % (i-4, (j+2) % bits),
           "C_%d_%d" % (i, j-1),
           "C_%d_%d" % (i, j)])
 
@@ -232,27 +277,63 @@ def load_sha1_example_data(G):
 
   for i in range(len(W_hello)):
     for j in range(32):
-      if i == 4 and j == 30:
-        G["W_%d_%d" % (i,j)].setProbs([0.5, 0.5])
-      else:
+      try:
         G["W_%d_%d" % (i,j)].fix( ((W_hello[i]>>j)&1) )
+      except:
+        pass
 
   for i in range(len(A_iv)):
     for j in range(32):
-      G["A_%d_%d" % (i-4,j)].fix( ((A_iv[i]>>j)&1) )
+      try:
+        G["A_%d_%d" % (i-4,j)].fix( ((A_iv[i]>>j)&1) )
+      except:
+        pass
 
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-        QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget)
+selected = None
+hasBackgroundColor = []
+
+class VariableLabel(QLabel):
+  def __init__(self, variable, parent=None):
+    QLabel.__init__(self, parent)
+    self.variable = variable
+    self.variable.qt = self
+    self.variable.update()
+
+  def mouseReleaseEvent(self, event):
+    global selected, hasBackgroundColor
+
+    log.debug('clicked %s' % self.variable.name)
+    for a in hasBackgroundColor:
+      a.setStyleSheet('')
+    hasBackgroundColor = []
+    selected = self
+    neighbors = self.variable.neighbors(2)
+    for k in neighbors:
+      c = neighbors[k] * 90
+      if k.qt != None:
+        k.qt.setStyleSheet('QLabel { background-color: #%2.2X%2.2X%2.2X }' % (c, c, 255))
+        hasBackgroundColor.append(k.qt)
+    self.setStyleSheet('QLabel { background-color: #%2.2X%2.2X%2.2X }' % (255, 0, 0))
 
 class SHA1FactorGraph(QWidget):
-  def __init__(self, parent=None):
+  def __init__(self, rounds=80, bits=32, parent=None):
     super(SHA1FactorGraph, self).__init__(parent)
 
     # construct the graph
-    self.rounds = 80
-    self.G = build_sha1_FactorGraph(self.rounds)
+    self.rounds = rounds
+    self.bits = bits
+    self.G = build_sha1_FactorGraph(self.rounds, self.bits)
+
+    # dot
+    #self.G.dot("/tmp/out.dot")
+
+    # font to use
+    font = QtGui.QFont('Courier New', 10, QtGui.QFont.Light)
+
+    # i
+    iLayout = QGridLayout()
+    iLayout.setSpacing(0)
 
     # display the Ws
     WLayout = QGridLayout()
@@ -262,19 +343,22 @@ class SHA1FactorGraph(QWidget):
     WLayout.addWidget(QLabel(""), self.rounds+4, 0)
 
     for i in range(self.rounds):
-      for j in range(32):
-        widget = QLabel("#")
-        self.G["W_%d_%d" % (i,j)].qt = widget
-        WLayout.addWidget(widget, i+4, j)
+      for j in range(self.bits):
+        widget = VariableLabel(self.G["W_%d_%d" % (i,j)])
+        widget.setFont(font)
+        WLayout.addWidget(widget, i+4, self.bits-j-1)
 
     # display the As
     ALayout = QGridLayout()
     ALayout.setSpacing(0)
     for i in range(-4, self.rounds+1):
-      for j in range(32):
-        widget = QLabel("#")
-        self.G["A_%d_%d" % (i,j)].qt = widget
-        ALayout.addWidget(widget, i+4, j)
+      widget = QLabel("%2d" % i)
+      widget.setFont(font)
+      iLayout.addWidget(widget, i+4, 0)
+      for j in range(self.bits):
+        widget = VariableLabel(self.G["A_%d_%d" % (i,j)])
+        widget.setFont(font)
+        ALayout.addWidget(widget, i+4, self.bits-j-1)
 
     Buttons = QVBoxLayout()
 
@@ -287,8 +371,9 @@ class SHA1FactorGraph(QWidget):
     Buttons.addWidget(quitButton)
 
     mainLayout = QHBoxLayout()
-    mainLayout.addLayout(WLayout)
+    mainLayout.addLayout(iLayout)
     mainLayout.addLayout(ALayout)
+    mainLayout.addLayout(WLayout)
     mainLayout.addLayout(Buttons)
 
     # load the graph with example data
@@ -309,38 +394,10 @@ if __name__ == "__main__":
 
   app = QApplication(sys.argv)
   
-  g = SHA1FactorGraph()
+  #g = SHA1FactorGraph(80, 4)
+  g = SHA1FactorGraph(64, 32)
   g.show()
 
   sys.exit(app.exec_()) 
 
-"""
-  ROUNDS = 80
-  G = build_sha1_FactorGraph(ROUNDS)
-
-  exit(0)
-
-
-  G.compute()
-
-  outt = []
-  for i in range(ROUNDS):
-    out = 0
-    for j in range(32):
-      var = G["W_%d_%d" % (i,j)]
-      out |= np.argmax(var.probs)<<j
-    outt.append(out)
-  print map(hex, outt)
-
-  outt = []
-  for i in range(-4, ROUNDS+1):
-    out = 0
-    for j in range(32):
-      var = G["A_%d_%d" % (i,j)]
-      out |= np.argmax(var.probs)<<j
-    outt.append(out)
-  print map(hex, outt)
-
-  #print hex(out + A_iv[0])
-"""
 
