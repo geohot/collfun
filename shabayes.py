@@ -6,10 +6,13 @@ import logging
 import flask
 import time
 
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-        QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget)
+        QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget, QFrame)
 
 log = logging.getLogger('MyLogger')
 log.setLevel(logging.DEBUG)
@@ -72,12 +75,18 @@ class Variable(object):
     self.inFactors = []
 
   def __str__(self):
+    if self.probs == None:
+      return '#'
+
+    if self.dim > 2:
+      if max(self.probs) == 0:
+        return '?'
+      return str(np.argmax(self.probs))
+
     if self.probs == [0.0, 1.0]:
       return '1'
     elif self.probs == [1.0, 0.0]:
       return '0'
-    elif self.probs == None:
-      return '#'
     return '?'
 
   def neighbors(self, depth):
@@ -317,7 +326,7 @@ class VariableLabel(QLabel):
     self.setStyleSheet('QLabel { background-color: #%2.2X%2.2X%2.2X }' % (255, 0, 0))
 
 class SHA1FactorGraph(QWidget):
-  def __init__(self, rounds=80, bits=32, parent=None):
+  def __init__(self, rounds=80, bits=32, extended=False, parent=None):
     super(SHA1FactorGraph, self).__init__(parent)
 
     # construct the graph
@@ -376,6 +385,42 @@ class SHA1FactorGraph(QWidget):
     mainLayout.addLayout(WLayout)
     mainLayout.addLayout(Buttons)
 
+    if extended:
+      # line
+      toto = QFrame()
+      toto.setFrameShape(QFrame.VLine)
+      toto.setFrameShadow(QFrame.Sunken)
+
+      # display the Fs
+      FLayout = QGridLayout()
+      FLayout.setSpacing(0)
+      for i in range(0,4):
+        FLayout.addWidget(QLabel(""), i, 0)
+      FLayout.addWidget(QLabel(""), self.rounds+4, 0)
+
+      for i in range(self.rounds):
+        for j in range(self.bits):
+          widget = VariableLabel(self.G["F_%d_%d" % (i,j)])
+          widget.setFont(font)
+          FLayout.addWidget(widget, i+4, self.bits-j-1)
+
+      # display the Cs
+      CLayout = QGridLayout()
+      CLayout.setSpacing(0)
+      for i in range(0,4):
+        CLayout.addWidget(QLabel(""), i, 0)
+      CLayout.addWidget(QLabel(""), self.rounds+4, 0)
+
+      for i in range(self.rounds):
+        for j in range(self.bits-1):
+          widget = VariableLabel(self.G["C_%d_%d" % (i,j)])
+          widget.setFont(font)
+          CLayout.addWidget(widget, i+4, (self.bits-1)-j-1)
+
+      mainLayout.addWidget(toto)
+      mainLayout.addLayout(FLayout)
+      mainLayout.addLayout(CLayout)
+
     # load the graph with example data
     load_sha1_example_data(self.G)
 
@@ -386,8 +431,6 @@ class SHA1FactorGraph(QWidget):
     self.G.compute()
 
 
-
- 
 if __name__ == "__main__":
   import sys
   from PyQt5.QtWidgets import QApplication
