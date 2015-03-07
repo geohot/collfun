@@ -1,11 +1,9 @@
 import sys
-import numpy as np
 import networkx as nx
-import itertools
-import logging
 import flask
 import time
-from collections import OrderedDict
+import math
+from factorgraph import *
 
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -14,43 +12,6 @@ from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
         QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget, QFrame)
-
-log = logging.getLogger('MyLogger')
-log.setLevel(logging.DEBUG)
-log.addHandler(logging.StreamHandler(sys.stderr))
-
-class factor(object):
-  """Generic factor class"""
-
-  def __init__(self, in_dims, out_dim, double):
-    self.dims = in_dims + [out_dim]
-    self.double = double
-
-  def dim_merge(self, x1, x2):
-    ret = map(sum, zip(map(np.product, zip(self.dims, x1)), x2))
-    #print x1, x2, ret
-    return tuple(ret)
-
-  def __call__(self, fxn):
-    name = fxn.func_name
-    ins = fxn.func_code.co_argcount
-    dims = self.dims
-
-    print "%8s %3d %3d" % (name, np.product(dims[0:ins]), np.product(dims)), dims[0:ins], dims[ins:]
-
-    if self.double:
-      matrix = np.zeros(map(lambda x: x*x, dims))
-      #print matrix.shape
-      for x1 in itertools.product(*map(range, dims[0:ins])):
-        for x2 in itertools.product(*map(range, dims[0:ins])):
-          matrix[self.dim_merge(x1+(fxn(*x1),), x2+(fxn(*x2),))] = 1.0
-    else:
-      matrix = np.zeros(dims)
-      for sins in itertools.product(*map(range, dims[0:ins])):
-        matrix[sins+(fxn(*sins),)] = 1.0
-
-    return matrix
-
 
 # Unique Factors
 #   f_if, f_maj, f_xor -- (4,4,4,4)         = 256
@@ -107,174 +68,13 @@ def carryc_1(w, a, f, e, c_in):
 def xor5(x1, x2, x3, x4):
   return x1 ^ x2 ^ x3 ^ x4
 
-log.debug("built factor matrices in %f s" % (time.time()-start))
+print "built factor matrices in %f s" % (time.time()-start)
 
 # Bit Random Variables
 #   W_(0,79)_(0,31)   -- 80*32 --  4 states
 #   A_(-4, 80)_(0,31) -- 85*32 --  4 states
 #   F_(0,79)_(0,31)   -- 80*32 --  4 states
 #   C_(0,79)_(0,30)   -- 80*31 -- 25 states
-
-# classes are private to FactorGraph
-class Variable(object):
-
-  # is this created for each class?
-  CONDITIONS = OrderedDict([
-    ('#', [0.00, 0.00, 0.00, 0.00]),
-
-    ('0', [1.00, 0.00, 0.00, 0.00]),
-    ('n', [0.00, 1.00, 0.00, 0.00]),
-    ('u', [0.00, 0.00, 1.00, 0.00]),
-    ('1', [0.00, 0.00, 0.00, 1.00]),
-
-    ('x', [0.00, 1.00, 1.00, 0.00]),
-    ('-', [1.00, 0.00, 0.00, 1.00]),
-
-    ('3', [1.00, 1.00, 0.00, 0.00]),
-    ('5', [1.00, 0.00, 1.00, 0.00]),
-    ('7', [1.00, 1.00, 1.00, 0.00]),
-    ('A', [0.00, 1.00, 0.00, 1.00]),
-    ('B', [1.00, 1.00, 0.00, 1.00]),
-    ('C', [0.00, 0.00, 1.00, 1.00]),
-    ('D', [1.00, 0.00, 1.00, 1.00]),
-    ('E', [0.00, 1.00, 1.00, 1.00]),
-
-    ('?', [1.00, 1.00, 1.00, 1.00]),
-  ])
-
-  def __init__(self, name, dim):
-    self.probs = None
-    self.name = name
-    self.dim = dim
-    self.qt = None
-    self.inFactors = []
-
-  def __str__(self):
-    if self.probs == None:
-      return '!'
-
-    if self.dim != 4:
-      if max(self.probs) == 0:
-        return '?'
-      return hex(np.argmax(self.probs))[2:]
-
-    for c in self.CONDITIONS:
-      xx = map(lambda x: x[0]*x[1], zip(self.probs, self.CONDITIONS[c])) 
-      if xx == self.probs:
-        #print self.probs, c, xx
-        return c
-
-    return '!'
-
-  def neighbors(self, depth):
-    ret = {self: 0}
-    for i in range(1, depth+1):
-      new = set()
-      for k in ret:
-        for factor in k.inFactors:
-          #print i, factor.name, map(lambda x: x.name, factor.rvs)
-          for rv in factor.rvs:
-            if rv not in ret:
-              new.add(rv)
-      for rv in new:
-        ret[rv] = i
-        
-    return ret
-
-  def update(self):
-    if self.qt != None:
-      self.qt.setText(str(self))
-
-  def setProbs(self, p):
-    if p == None:
-      self.probs = None
-    else:
-      self.probs = list(p / np.linalg.norm(p))
-    self.update()
-
-  def fix(self, x):
-    """Concentrate all probability in one place"""
-    if type(x) is str:
-      probs = self.CONDITIONS[x][:]
-    else:
-      probs = [0.0]*self.dim
-      probs[x] = 1.0
-    #print x, probs
-    self.setProbs(probs)
-
-class Factor(object):
-  def __init__(self, matrix, rvs):
-    self.matrix = matrix
-    self.rvs = rvs
-    for rv in rvs:
-      rv.inFactors.append(self)
-
-  def compute(self):
-    if sum(map(lambda x: x.probs != None, self.rvs)) == len(self.rvs)-1:
-      mat = self.matrix
-      for rv in self.rvs:
-        if rv.probs != None:
-          #print rv.name, rv.probs
-          nmat = mat[0] * rv.probs[0]
-          for i in range(1, len(rv.probs)):
-            nmat += mat[i] * rv.probs[i]
-          mat = nmat
-
-      self.rvs[-1].setProbs(list(mat))
-      #print "setting ", self.rvs[-1].name, self.rvs[-1].probs
-      return True
-    return False
-
-# public class
-class FactorGraph(object):
-  def __init__(self):
-    self.variables = {}
-    self.factors = []
-    self.mats = {}
-
-  def __getitem__(self, key):
-    return self.variables[key]
-
-  def reset(self):
-    for k in self.variables:
-      self.variables[k].setProbs(None)
-
-  def dot(self, filename):
-    log.debug("start dot file generation")
-
-    g = nx.DiGraph()
-    for k in self.variables:
-      g.add_node(k)
-
-    for f in self.factors:
-      for rv in f.rvs[:-1]:
-        g.add_edge(rv.name, f.rvs[-1].name)
-
-    log.debug("constructed graph has %d nodes and %d edges" % (g.number_of_nodes(), g.number_of_edges()))
-
-    nx.write_dot(g, filename)
-    log.debug("wrote %s" % filename)
-
-  def compute(self):
-    did_compute = True
-    start = time.time()
-    rounds = 0
-    var = 0
-    while did_compute:
-      rounds += 1
-      did_compute = False
-      for f in self.factors:
-        if f.compute():
-          var += 1
-          did_compute = True
-    log.debug("%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start))
-
-  def addVariable(self, name, dim):
-    self.variables[name] = Variable(name, dim)
-
-  def addFactor(self, fxn, rvs):
-    rvs = map(lambda x: self.variables[x], rvs)
-    self.factors.append(Factor(fxn, rvs))
 
 def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()
@@ -380,12 +180,12 @@ def load_sha1_characteristic(G, name):
     if len(lnn) > 1:
       # a
       for j,c in zip(range(32), lnn[1]):
-        G["A_%d_%d" % (i-4,j)].fix(c)
+        G["A_%d_%d" % (i-4,31-j)].fix(c)
 
     if len(lnn) > 2:
       # w
-      for j,c in zip(range(32), lnn[1]):
-        G["W_%d_%d" % (i-4,j)].fix(c)
+      for j,c in zip(range(32), lnn[2]):
+        G["W_%d_%d" % (i-4,31-j)].fix(c)
     i += 1
 
 
@@ -402,14 +202,14 @@ class VariableLabel(QLabel):
   def mouseReleaseEvent(self, event):
     global selected, hasBackgroundColor
 
-    log.debug('clicked %s %s' % (self.variable.name, str(self.variable.probs)))
+    print 'clicked %s %s' % (self.variable.name, str(self.variable.probs))
     for a in hasBackgroundColor:
       a.setStyleSheet('')
     hasBackgroundColor = []
     selected = self
     neighbors = self.variable.neighbors(2)
     for k in neighbors:
-      c = neighbors[k] * 90
+      c = neighbors[k] * 100
       if k.qt != None:
         k.qt.setStyleSheet('QLabel { background-color: #%2.2X%2.2X%2.2X }' % (c, c, 255))
         hasBackgroundColor.append(k.qt)
@@ -423,6 +223,7 @@ class SHA1FactorGraph(QWidget):
     self.rounds = rounds
     self.bits = bits
     self.G = build_sha1_FactorGraph(self.rounds, self.bits)
+    self.puLabels = []
 
     # dot
     #self.G.dot("/tmp/out.dot")
@@ -447,6 +248,10 @@ class SHA1FactorGraph(QWidget):
         widget.setFont(font)
         WLayout.addWidget(widget, i+4, self.bits-j-1)
 
+      self.puLabels.append(QLabel(""))
+      self.puLabels[-1].setFont(font)
+      WLayout.addWidget(self.puLabels[-1], i+4, self.bits+1)
+
     # display the As
     ALayout = QGridLayout()
     ALayout.setSpacing(0)
@@ -465,12 +270,16 @@ class SHA1FactorGraph(QWidget):
     computeButton.clicked.connect(self.compute)
     Buttons.addWidget(computeButton)
 
+    puButton = QPushButton("&Update")
+    puButton.clicked.connect(self.update)
+    Buttons.addWidget(puButton)
+
     resetButton = QPushButton("&Reset")
     resetButton.clicked.connect(self.reset)
     Buttons.addWidget(resetButton)
 
     quitButton = QPushButton("&Quit")
-    quitButton.clicked.connect(sys.exit)
+    quitButton.clicked.connect(QApplication.quit)
     Buttons.addWidget(quitButton)
 
     mainLayout = QHBoxLayout()
@@ -520,15 +329,70 @@ class SHA1FactorGraph(QWidget):
 
     self.reset()
 
+  def keyPressEvent(self, qKeyEvent):
+    print "key"
+  
   def compute(self):
     self.G.compute()
+
+  def update(self):
+    self.G.compute()
+
+    #for i in range(1, self.rounds+1):
+    for i in range(1, 2):
+      # save the probabilities of the round
+      saved = []
+      for j in range(self.bits):
+        saved.append(self.G["A_%d_%d" % (i, j)].probs)
+        
+      # read off the Pu
+      pu = 0.0
+      for j in range(self.bits):
+        # reset the jth bit
+        if j != 0:
+          self.G["C_%d_%d" % (i-1, j-1)].reset()
+        self.G["F_%d_%d" % (i-1, j)].reset()
+        self.G["A_%d_%d" % (i, j)].reset()
+
+        # compute the new probs
+        self.G.compute()
+
+        # add off the new probs
+        probs = self.G["A_%d_%d" % (i, j)].probs[:]
+        ret = 0.0
+        new_probs = [0.0]*4
+        for k in range(len(saved[j])):
+          if saved[j][k] > 0.0:
+            new_probs[k] = probs[k]
+            ret += probs[k]
+        try:
+          pu += math.log(ret, 2)
+        except:
+          pu += float("-inf")
+
+        # must normalize
+        self.G["A_%d_%d" % (i, j)].setProbs(new_probs)
+        print probs, self.G["A_%d_%d" % (i, j)].probs
+
+        
+
+        #print i, j, pu, saved[j], probs
+      #print i, pu
+      self.puLabels[i-1].setText("  %6.2f" % pu)
+
+      """"
+      # restore the old probs
+      for j in range(self.bits):
+        self.G["A_%d_%d" % (i, j)].setProbs(saved[j])
+      """
 
   
   def reset(self):
     self.G.reset()
 
     # load the graph with example data
-    load_sha1_characteristic(self.G, "dc_char")
+    #load_sha1_characteristic(self.G, "dc_char")
+    load_sha1_characteristic(self.G, "test_char")
     #load_sha1_example_data(self.G)
 
 
@@ -539,8 +403,9 @@ if __name__ == "__main__":
   app = QApplication(sys.argv)
   
   #g = SHA1FactorGraph(80, 4)
+  g = SHA1FactorGraph(64, 32, True)
   #g = SHA1FactorGraph(64, 32)
-  g = SHA1FactorGraph(80, 32)
+  #g = SHA1FactorGraph(80, 32)
   g.show()
 
   sys.exit(app.exec_()) 
