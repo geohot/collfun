@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import numpy as np
 import itertools
+import time
 
 class factor(object):
   """Generic factor class"""
