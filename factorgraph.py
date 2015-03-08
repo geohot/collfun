@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import networkx as nx
 import numpy as np
 import itertools
 import time
@@ -162,9 +163,7 @@ class FactorGraph(object):
     for k in self.variables:
       self.variables[k].reset()
 
-  def dot(self, filename):
-    print "start dot file generation"
-
+  def graph(self):
     g = nx.DiGraph()
     for k in self.variables:
       g.add_node(k)
@@ -173,8 +172,13 @@ class FactorGraph(object):
       for rv in f.rvs[:-1]:
         g.add_edge(rv.name, f.rvs[-1].name)
 
-    print "constructed graph has %d nodes and %d edges" % (g.number_of_nodes(), g.number_of_edges())
+    return g
 
+  def dot(self, filename):
+    print "start dot file generation"
+    g = self.graph()
+    
+    print "constructed graph has %d nodes and %d edges" % (g.number_of_nodes(), g.number_of_edges())
     nx.write_dot(g, filename)
     print "wrote %s" % filename
 
@@ -193,10 +197,14 @@ class FactorGraph(object):
     print "%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start)
 
   def addVariable(self, name, dim):
-    self.variables[name] = Variable(name, dim)
+    ret = Variable(name, dim)
+    self.variables[name] = ret
+    return ret
 
   def addFactor(self, fxn, rvs):
     rvs = map(lambda x: self.variables[x], rvs)
-    self.factors.append(Factor(fxn, rvs))
+    ret = Factor(fxn, rvs)
+    self.factors.append(ret)
+    return ret
 
 

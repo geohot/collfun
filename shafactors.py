@@ -64,6 +64,51 @@ print "built factor matrices in %f s" % (time.time()-start)
 #   F_(0,79)_(0,31)   -- 80*32 --  4 states
 #   C_(0,79)_(0,30)   -- 80*31 -- 25 states
 
+def add_sha1_factors_for_round(G, i, bits=32):
+  fxn = [f_if, f_xor, f_maj, f_xor][i/20]
+  k = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
+
+  for j in range(bits):
+    G.addFactor(fxn, [
+      "A_%d_%d" % (i-1, j),
+      "A_%d_%d" % (i-2, (j+2) % bits),
+      "A_%d_%d" % (i-3, (j+2) % bits),
+      "F_%d_%d" % (i, j)])
+
+  j = 0
+  fxn = [add_0, add_1][(k>>j)&1]
+  G.addFactor(fxn, [
+    "W_%d_%d" % (i, j),
+    "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
+    "F_%d_%d" % (i, j),
+    "A_%d_%d" % (i-4, (j+2) % bits),
+    "A_%d_%d" % (i+1, j)])
+  fxn = [carry_0, carry_1][(k>>j)&1]
+  G.addFactor(fxn, [
+    "W_%d_%d" % (i, j),
+    "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
+    "F_%d_%d" % (i, j),
+    "A_%d_%d" % (i-4, (j+2) % bits),
+    "C_%d_%d" % (i, j)])
+  for j in range(1, bits):
+    fxn = [addc_0, addc_1][(k>>j)&1]
+    G.addFactor(fxn, [
+      "W_%d_%d" % (i, j),
+      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
+      "F_%d_%d" % (i, j),
+      "A_%d_%d" % (i-4, (j+2) % bits),
+      "C_%d_%d" % (i, j-1),
+      "A_%d_%d" % (i+1, j)])
+    if j != bits-1:
+      fxn = [carryc_0, carryc_1][(k>>j)&1]
+      G.addFactor(fxn, [
+        "W_%d_%d" % (i, j),
+        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
+        "F_%d_%d" % (i, j),
+        "A_%d_%d" % (i-4, (j+2) % bits),
+        "C_%d_%d" % (i, j-1),
+        "C_%d_%d" % (i, j)])
+
 def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()
 
@@ -91,51 +136,9 @@ def build_sha1_FactorGraph(rounds, bits):
         "W_%d_%d" % (i, (j+1) % bits)])
 
   # add boolean F factors
-  for i in range(rounds):
-    fxn = [f_if, f_xor, f_maj, f_xor][i/20]
-    for j in range(bits):
-      G.addFactor(fxn, [
-        "A_%d_%d" % (i-1, j),
-        "A_%d_%d" % (i-2, (j+2) % bits),
-        "A_%d_%d" % (i-3, (j+2) % bits),
-        "F_%d_%d" % (i, j)])
-
   # add addition bullshit
   for i in range(rounds):
-    k = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
-    j = 0
-    fxn = [add_0, add_1][(k>>j)&1]
-    G.addFactor(fxn, [
-      "W_%d_%d" % (i, j),
-      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-      "F_%d_%d" % (i, j),
-      "A_%d_%d" % (i-4, (j+2) % bits),
-      "A_%d_%d" % (i+1, j)])
-    fxn = [carry_0, carry_1][(k>>j)&1]
-    G.addFactor(fxn, [
-      "W_%d_%d" % (i, j),
-      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-      "F_%d_%d" % (i, j),
-      "A_%d_%d" % (i-4, (j+2) % bits),
-      "C_%d_%d" % (i, j)])
-    for j in range(1, bits):
-      fxn = [addc_0, addc_1][(k>>j)&1]
-      G.addFactor(fxn, [
-        "W_%d_%d" % (i, j),
-        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-        "F_%d_%d" % (i, j),
-        "A_%d_%d" % (i-4, (j+2) % bits),
-        "C_%d_%d" % (i, j-1),
-        "A_%d_%d" % (i+1, j)])
-      if j != bits-1:
-        fxn = [carryc_0, carryc_1][(k>>j)&1]
-        G.addFactor(fxn, [
-          "W_%d_%d" % (i, j),
-          "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-          "F_%d_%d" % (i, j),
-          "A_%d_%d" % (i-4, (j+2) % bits),
-          "C_%d_%d" % (i, j-1),
-          "C_%d_%d" % (i, j)])
+    add_sha1_factors_for_round(G, i)
 
   return G
 

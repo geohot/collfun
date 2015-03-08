@@ -1,5 +1,4 @@
 import sys
-import networkx as nx
 import flask
 import math
 from shafactors import *
