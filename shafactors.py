@@ -10,17 +10,17 @@ start = time.time()
 
 # b,c,d -> f
 @factor([2,2,2], 2, True)
-def f_if(b,c,d):
+def f_if(d,c,b):
   return d ^ (b & (c ^ d))
 
 # b,c,d -> f
 @factor([2,2,2], 2, True)
-def f_maj(b,c,d):
+def f_maj(d,c,b):
   return b&c ^ b&d ^ c&d
 
 # b,c,d -> f
 @factor([2,2,2], 2, True)
-def f_xor(b,c,d):
+def f_xor(d,c,b):
   return b^c^d
 
 # w, a, f, e, c_in -> c_out, o
@@ -56,6 +56,10 @@ def carryc_1(w, a, f, e, c_in):
 def xor5(x1, x2, x3, x4):
   return x1 ^ x2 ^ x3 ^ x4
 
+@factor([4,4], 2)
+def equal(x1, x2):
+  return x1 == x2
+
 print "built factor matrices in %f s" % (time.time()-start)
 
 # Bit Random Variables
@@ -70,42 +74,42 @@ def add_sha1_factors_for_round(G, i, bits=32):
 
   for j in range(bits):
     G.addFactor(fxn, [
-      "A_%d_%d" % (i-1, j),
-      "A_%d_%d" % (i-2, (j+2) % bits),
       "A_%d_%d" % (i-3, (j+2) % bits),
+      "A_%d_%d" % (i-2, (j+2) % bits),
+      "A_%d_%d" % (i-1, j),
       "F_%d_%d" % (i, j)])
 
   j = 0
   fxn = [add_0, add_1][(k>>j)&1]
   G.addFactor(fxn, [
-    "W_%d_%d" % (i, j),
+    "A_%d_%d" % (i-4, (j+2) % bits),
     "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
     "F_%d_%d" % (i, j),
-    "A_%d_%d" % (i-4, (j+2) % bits),
+    "W_%d_%d" % (i, j),
     "A_%d_%d" % (i+1, j)])
   fxn = [carry_0, carry_1][(k>>j)&1]
   G.addFactor(fxn, [
-    "W_%d_%d" % (i, j),
+    "A_%d_%d" % (i-4, (j+2) % bits),
     "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
     "F_%d_%d" % (i, j),
-    "A_%d_%d" % (i-4, (j+2) % bits),
+    "W_%d_%d" % (i, j),
     "C_%d_%d" % (i, j)])
   for j in range(1, bits):
     fxn = [addc_0, addc_1][(k>>j)&1]
     G.addFactor(fxn, [
-      "W_%d_%d" % (i, j),
+      "A_%d_%d" % (i-4, (j+2) % bits),
       "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
       "F_%d_%d" % (i, j),
-      "A_%d_%d" % (i-4, (j+2) % bits),
+      "W_%d_%d" % (i, j),
       "C_%d_%d" % (i, j-1),
       "A_%d_%d" % (i+1, j)])
     if j != bits-1:
       fxn = [carryc_0, carryc_1][(k>>j)&1]
       G.addFactor(fxn, [
-        "W_%d_%d" % (i, j),
+        "A_%d_%d" % (i-4, (j+2) % bits),
         "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
         "F_%d_%d" % (i, j),
-        "A_%d_%d" % (i-4, (j+2) % bits),
+        "W_%d_%d" % (i, j),
         "C_%d_%d" % (i, j-1),
         "C_%d_%d" % (i, j)])
 

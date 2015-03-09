@@ -7,7 +7,7 @@ import time
 class factor(object):
   """Generic factor class"""
 
-  def __init__(self, in_dims, out_dim, double):
+  def __init__(self, in_dims, out_dim, double=False):
     self.dims = in_dims + [out_dim]
     self.double = double
 
