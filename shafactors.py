@@ -24,32 +24,29 @@ def f_xor(d,c,b):
   return b^c^d
 
 # w, a, f, e, c_in -> c_out, o
-@factor([2,2,2,2], 2, True)
+@factor([2,2,2,2], 10, True)
 def add_0(w, a, f, e):
-  return (w+a+f+e+0) & 1
-@factor([2,2,2,2,5], 2, True)
+  return w+a+f+e+0
+@factor([2,2,2,2,5], 10, True)
 def addc_0(w, a, f, e, c_in):
-  return (w+a+f+e+c_in+0) & 1
-@factor([2,2,2,2], 5, True)
-def carry_0(w, a, f, e):
-  return (w+a+f+e+0) >> 1
-@factor([2,2,2,2,5], 5, True)
-def carryc_0(w, a, f, e, c_in):
-  return (w+a+f+e+c_in+0) >> 1
+  return w+a+f+e+c_in+0
 
 # w, a, f, e, c_in -> c_out, o
-@factor([2,2,2,2], 2, True)
+@factor([2,2,2,2], 10, True)
 def add_1(w, a, f, e):
-  return (w+a+f+e+1) & 1
-@factor([2,2,2,2,5], 2, True)
+  return w+a+f+e+1
+
+@factor([2,2,2,2,5], 10, True)
 def addc_1(w, a, f, e, c_in):
-  return (w+a+f+e+c_in+1) & 1
-@factor([2,2,2,2], 5, True)
-def carry_1(w, a, f, e):
-  return (w+a+f+e+1) >> 1
-@factor([2,2,2,2,5], 5, True)
-def carryc_1(w, a, f, e, c_in):
-  return (w+a+f+e+c_in+1) >> 1
+  return w+a+f+e+c_in+1
+
+@factor([10], 5, True)
+def carry(x):
+  return x>>1
+
+@factor([10], 2, True)
+def lsb(x):
+  return x&1
 
 # x1, x2, x3, x4 -> x5
 @factor([2,2,2,2], 2, True)
@@ -79,38 +76,30 @@ def add_sha1_factors_for_round(G, i, bits=32):
       "A_%d_%d" % (i-1, j),
       "F_%d_%d" % (i, j)])
 
-  j = 0
-  fxn = [add_0, add_1][(k>>j)&1]
-  G.addFactor(fxn, [
-    "A_%d_%d" % (i-4, (j+2) % bits),
-    "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-    "F_%d_%d" % (i, j),
-    "W_%d_%d" % (i, j),
-    "A_%d_%d" % (i+1, j)])
-  fxn = [carry_0, carry_1][(k>>j)&1]
-  G.addFactor(fxn, [
-    "A_%d_%d" % (i-4, (j+2) % bits),
-    "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-    "F_%d_%d" % (i, j),
-    "W_%d_%d" % (i, j),
-    "C_%d_%d" % (i, j)])
-  for j in range(1, bits):
-    fxn = [addc_0, addc_1][(k>>j)&1]
-    G.addFactor(fxn, [
-      "A_%d_%d" % (i-4, (j+2) % bits),
-      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-      "F_%d_%d" % (i, j),
-      "W_%d_%d" % (i, j),
-      "C_%d_%d" % (i, j-1),
-      "A_%d_%d" % (i+1, j)])
-    if j != bits-1:
-      fxn = [carryc_0, carryc_1][(k>>j)&1]
+  for j in range(0, bits):
+    if j == 0:
+      fxn = [add_0, add_1][(k>>j)&1]
+      G.addFactor(fxn, [
+        "A_%d_%d" % (i-4, (j+2) % bits),
+        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
+        "F_%d_%d" % (i, j),
+        "W_%d_%d" % (i, j),
+        "O_%d_%d" % (i, j)])
+    else:
+      fxn = [addc_0, addc_1][(k>>j)&1]
       G.addFactor(fxn, [
         "A_%d_%d" % (i-4, (j+2) % bits),
         "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
         "F_%d_%d" % (i, j),
         "W_%d_%d" % (i, j),
         "C_%d_%d" % (i, j-1),
+        "O_%d_%d" % (i, j)])
+    G.addFactor(lsb, [
+      "O_%d_%d" % (i, j),
+      "A_%d_%d" % (i+1, j)])
+    if j != bits-1:
+      G.addFactor(carry, [
+        "O_%d_%d" % (i, j),
         "C_%d_%d" % (i, j)])
 
 def build_sha1_FactorGraph(rounds, bits):
@@ -121,6 +110,7 @@ def build_sha1_FactorGraph(rounds, bits):
     for j in range(bits):
       G.addVariable("W_%d_%d" % (i,j), 2*2)
       G.addVariable("F_%d_%d" % (i,j), 2*2)
+      G.addVariable("O_%d_%d" % (i,j), 10*10)
     for j in range(bits-1):
       G.addVariable("C_%d_%d" % (i,j), 5*5)
 
