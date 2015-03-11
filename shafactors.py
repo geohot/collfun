@@ -47,15 +47,25 @@ def carry(x):
 @factor([10], 2, True)
 def lsb(x):
   return x&1
+ 
+@factor([10, 2], 5, True)
+def carrylsb(x,y):
+  if x&1 == y:
+    return x>>1
+  else:
+    return None
 
 # x1, x2, x3, x4 -> x5
 @factor([2,2,2,2], 2, True)
 def xor5(x1, x2, x3, x4):
   return x1 ^ x2 ^ x3 ^ x4
 
-@factor([4,4], 2)
-def equal(x1, x2):
-  return x1 == x2
+@factor([16,4], 2)
+def follows(x1, x2):
+  if x1 & (1 << x2):
+    return 1
+  else:
+    return 0
 
 print "built factor matrices in %f s" % (time.time()-start)
 
@@ -94,6 +104,16 @@ def add_sha1_factors_for_round(G, i, bits=32):
         "W_%d_%d" % (i, j),
         "C_%d_%d" % (i, j-1),
         "O_%d_%d" % (i, j)])
+    if j != bits-1:
+      G.addFactor(carrylsb, [
+        "O_%d_%d" % (i, j),
+        "A_%d_%d" % (i+1, j),
+        "C_%d_%d" % (i, j)])
+    else:
+      G.addFactor(lsb, [
+        "O_%d_%d" % (i, j),
+        "A_%d_%d" % (i+1, j)])
+    """
     G.addFactor(lsb, [
       "O_%d_%d" % (i, j),
       "A_%d_%d" % (i+1, j)])
@@ -101,6 +121,7 @@ def add_sha1_factors_for_round(G, i, bits=32):
       G.addFactor(carry, [
         "O_%d_%d" % (i, j),
         "C_%d_%d" % (i, j)])
+    """
 
 def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()

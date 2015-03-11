@@ -27,7 +27,8 @@ class factor(object):
       #print matrix.shape
       for x1 in itertools.product(*map(range, dims[0:ins])):
         for x2 in itertools.product(*map(range, dims[0:ins])):
-          matrix[self.dim_merge(x1+(fxn(*x1),), x2+(fxn(*x2),))] = 1.0
+          if fxn(*x1) != None and fxn(*x2) != None:
+            matrix[self.dim_merge(x1+(fxn(*x1),), x2+(fxn(*x2),))] = 1.0
     else:
       matrix = np.zeros(dims)
       for sins in itertools.product(*map(range, dims[0:ins])):
@@ -40,6 +41,13 @@ class factor(object):
 class Variable(object):
 
   # is this created for each class?
+  CONDITIONS2 = OrderedDict([
+    ('#', [0.00, 0.00]),
+    ('0', [1.00, 0.00]),
+    ('1', [0.00, 1.00]),
+    ('?', [1.00, 1.00]),
+  ])
+
   CONDITIONS = OrderedDict([
     ('#', [0.00, 0.00, 0.00, 0.00]),
 
@@ -62,6 +70,8 @@ class Variable(object):
 
     ('?', [1.00, 1.00, 1.00, 1.00]),
   ])
+
+  CONDITIONS16 = '#0n3u5x71-ABCDE?'
 
   def __init__(self, name, dim):
     self.probs = None
@@ -109,22 +119,34 @@ class Variable(object):
   def reset(self):
     self.setProbs(None)
 
-  def setProbs(self, p):
+  def setProbs(self, p, normalize=False):
     if p == None:
       self.probs = None
     else:
-      self.probs = list(np.array(p) / sum(p))
+      # i don't want to normalize here...
+      if normalize:
+        self.probs = list(np.array(p) / sum(p))
+      else:
+        self.probs = p
     self.update()
 
   def fix(self, x):
     """Concentrate all probability in one place"""
     if type(x) is str:
-      probs = self.CONDITIONS[x][:]
+      if x == '!':
+        probs = None
+      elif self.dim == 4:
+        probs = self.CONDITIONS[x][:]
+      elif self.dim == 2:
+        probs = self.CONDITIONS2[x][:]
+      elif self.dim == 16:
+        probs = [0.0]*self.dim
+        probs[self.CONDITIONS16.index(x)] = 1.0
     else:
       probs = [0.0]*self.dim
       probs[x] = 1.0
     #print x, probs
-    self.setProbs(probs)
+    self.setProbs(probs, True)
 
 class Factor(object):
   def __init__(self, matrix, rvs):
@@ -134,8 +156,12 @@ class Factor(object):
       rv.inFactors.append(self)
 
   def compute(self):
+    # if all the variables are computed except one
     if sum(map(lambda x: x.probs != None, self.rvs)) == len(self.rvs)-1:
-      mat = self.matrix
+      target_idx = map(lambda x: x.probs, self.rvs).index(None)
+      new_dims = filter(lambda x: x != target_idx, range(len(self.rvs))) + [target_idx]
+      #print target_idx, new_dims
+      mat = self.matrix.transpose(new_dims)
       for rv in self.rvs:
         if rv.probs != None:
           #print rv.name, rv.probs
@@ -144,7 +170,7 @@ class Factor(object):
             nmat += mat[i] * rv.probs[i]
           mat = nmat
 
-      self.rvs[-1].setProbs(list(mat))
+      self.rvs[target_idx].setProbs(list(mat))
       #print "setting ", self.rvs[-1].name, self.rvs[-1].probs
       return True
     return False
@@ -154,7 +180,6 @@ class FactorGraph(object):
   def __init__(self):
     self.variables = {}
     self.factors = []
-    self.mats = {}
 
   def __getitem__(self, key):
     return self.variables[key]
@@ -174,13 +199,20 @@ class FactorGraph(object):
 
     return g
 
-  def dot(self, filename):
-    print "start dot file generation"
-    g = self.graph()
-    
-    print "constructed graph has %d nodes and %d edges" % (g.number_of_nodes(), g.number_of_edges())
-    nx.write_dot(g, filename)
-    print "wrote %s" % filename
+  def fgraph(self):
+    g = nx.DiGraph()
+    for k in self.variables:
+      g.add_node(k)
+
+    i = 0
+    for f in self.factors:
+      fname = "f%d" % (i)
+      for rv in f.rvs[:-1]:
+        g.add_edge(rv.name, fname)
+        g.add_edge(fname, f.rvs[-1].name)
+      i += 1
+
+    return g
 
   def compute(self):
     did_compute = True
