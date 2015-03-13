@@ -48,6 +48,7 @@ def carry(x):
 def lsb(x):
   return x&1
  
+# this shouldn't exist
 @factor([10, 2], 5, True)
 def carrylsb(x,y):
   if x&1 == y:
@@ -104,41 +105,64 @@ def add_sha1_factors_for_round(G, i, bits=32):
         "W_%d_%d" % (i, j),
         "C_%d_%d" % (i, j-1),
         "O_%d_%d" % (i, j)])
-    if j != bits-1:
-      G.addFactor(carrylsb, [
-        "O_%d_%d" % (i, j),
-        "A_%d_%d" % (i+1, j),
-        "C_%d_%d" % (i, j)])
+
+    # this is the wrong way to do it, implement the real algorithm
+    if True:
+      if j != bits-1:
+        G.addFactor(carrylsb, [
+          "O_%d_%d" % (i, j),
+          "A_%d_%d" % (i+1, j),
+          "C_%d_%d" % (i, j)])
+      else:
+        G.addFactor(lsb, [
+          "O_%d_%d" % (i, j),
+          "A_%d_%d" % (i+1, j)])
+
+      G.addFactor(follows,
+          ["T_%d_%d" % (i+1, j),
+           "A_%d_%d" % (i+1, j),
+           "Pu_%d_%d" % (i+1, j)])
     else:
       G.addFactor(lsb, [
         "O_%d_%d" % (i, j),
         "A_%d_%d" % (i+1, j)])
-    """
-    G.addFactor(lsb, [
-      "O_%d_%d" % (i, j),
-      "A_%d_%d" % (i+1, j)])
-    if j != bits-1:
-      G.addFactor(carry, [
-        "O_%d_%d" % (i, j),
-        "C_%d_%d" % (i, j)])
-    """
+      if j != bits-1:
+        G.addFactor(carry, [
+          "O_%d_%d" % (i, j),
+          "C_%d_%d" % (i, j)])
+
+
+class FactorByte(object):
+  def __init__(self, G, name, dim, bits):
+    self.G = G
+    self.name = name
+    self.variables = [G.addVariable("%s_%d" % (name, i), dim) for i in range(bits)]
+  
+  def __getitem__(self, key):
+    return self.variables[key]
+      
+  def fix(self, s):
+    for v, c in zip(self.variables, s[::-1]):
+      v.fix(c)
+  
+  def __str__(self):
+    return ''.join(map(str, self.variables))[::-1]
 
 def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()
 
   # add W's, F's, C's
   for i in range(rounds):
-    for j in range(bits):
-      G.addVariable("W_%d_%d" % (i,j), 2*2)
-      G.addVariable("F_%d_%d" % (i,j), 2*2)
-      G.addVariable("O_%d_%d" % (i,j), 10*10)
-    for j in range(bits-1):
-      G.addVariable("C_%d_%d" % (i,j), 5*5)
+    FactorByte(G, "W_%d" % i, 2*2, bits)
+    FactorByte(G, "F_%d" % i, 2*2, bits)
+    FactorByte(G, "O_%d" % i, 10*10, bits)
+    FactorByte(G, "C_%d" % i, 5*5, bits-1)
 
-  # add A's
+    FactorByte(G, "T_%d" % (i+1), 16, bits)
+    FactorByte(G, "Pu_%d" % (i+1), 2, bits)
+
   for i in range(-4, rounds+1):
-    for j in range(bits):
-      G.addVariable("A_%d_%d" % (i,j), 2*2)
+    FactorByte(G, "A_%d" % i, 2*2, bits)
 
   # add linear W factors
   for i in range(16, rounds):
@@ -186,7 +210,12 @@ def load_sha1_characteristic(G, name):
     if len(lnn) > 1:
       # a
       for j,c in zip(range(32), lnn[1]):
-        G["A_%d_%d" % (i-4,31-j)].fix(c)
+        if i < 5:
+          G["A_%d_%d" % (i-4,31-j)].fix(c)
+        else:
+          G["T_%d_%d" % (i-4,31-j)].fix(c)
+          #if j != 31:
+          G["Pu_%d_%d" % (i-4,j)].fix('1')
 
     if len(lnn) > 2:
       # w

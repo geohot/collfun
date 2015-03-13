@@ -92,9 +92,11 @@ class SHA1FactorGraph(QWidget):
     computeButton.clicked.connect(self.compute)
     Buttons.addWidget(computeButton)
 
+    """
     puButton = QPushButton("&Update")
     puButton.clicked.connect(self.update)
     Buttons.addWidget(puButton)
+    """
 
     resetButton = QPushButton("&Reset")
     resetButton.clicked.connect(self.reset)
@@ -213,8 +215,8 @@ class SHA1FactorGraph(QWidget):
     self.G.reset()
 
     # load the graph with example data
-    #load_sha1_characteristic(self.G, "dc_char")
-    load_sha1_characteristic(self.G, "test_char")
+    load_sha1_characteristic(self.G, "dc_char")
+    #load_sha1_characteristic(self.G, "test_char")
     #load_sha1_example_data(self.G)
 
 
@@ -225,8 +227,8 @@ if __name__ == "__main__":
   app = QApplication(sys.argv)
   
   #g = SHA1FactorGraph(80, 4)
-  g = SHA1FactorGraph(64, 32, True)
-  #g = SHA1FactorGraph(64, 32)
+  #g = SHA1FactorGraph(64, 32, True)
+  g = SHA1FactorGraph(64, 32)
   #g = SHA1FactorGraph(80, 32)
   g.show()
 
