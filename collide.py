@@ -3,6 +3,10 @@ import struct
 from pprint import pprint
 from characteristic import Characteristic
 
+def bprint(x):
+  return str(bin(x)[2:].rjust(32, '0'))
+
+
 def ft(x,y,z,i):
   i /= 20
   if i == 0:
@@ -81,6 +85,9 @@ def expand(w, this_round=0, total_length=80):
     w.append(rl(w[-3] ^ w[-8] ^ w[-14] ^ w[-16], 1))
   return w
 
+
+
+
 def sha1(w):
   """Compute SHA-1 over w and return q"""
   iv = tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
@@ -117,6 +124,13 @@ def dv_to_differential(dv):
     ret[i+5] ^= rl(dv[i], 30)
   return ret[6:86]
     
+dv = expand([0,0,0,0,0x80000000,0,0,0,0,0,0x80000000,0,0x80000000,0,0,0], 43)
+diff = dv_to_differential(dv)
+
+for i in range(len(diff)):
+  print "%3d %s" % (i, bprint(diff[i]))
+
+exit(0)
 
 
 w = tonum("hello\x80" + "\x00"*(56 - 6) + struct.pack("!Q", 8*5))
@@ -127,14 +141,6 @@ print map(hex, expand(w))
 print map(hex, sha1(expand(w)))
 
 exit(0)
-
-dv = expand([0,0,0,0,0x80000000,0,0,0,0,0,0x80000000,0,0x80000000,0,0,0], 43)
-diff = dv_to_differential(dv)
-
-"""
-for i in range(len(dv)):
-  print "%3d %s" % (i, bprint(dv[i]))
-"""
 
 #print len(dv)
 

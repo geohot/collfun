@@ -8,6 +8,8 @@ from factorgraph import *
 
 start = time.time()
 
+PU_COMPUTE = False
+
 # b,c,d -> f
 @factor([2,2,2], 2, True)
 def f_if(d,c,b):
@@ -40,21 +42,23 @@ def add_1(w, a, f, e):
 def addc_1(w, a, f, e, c_in):
   return w+a+f+e+c_in+1
 
-@factor([10], 5, True)
-def carry(x):
-  return x>>1
-
-@factor([10], 2, True)
-def lsb(x):
-  return x&1
- 
-# this shouldn't exist
-@factor([10, 2], 5, True)
-def carrylsb(x,y):
-  if x&1 == y:
+if PU_COMPUTE:
+  # this shouldn't exist
+  @factor([10, 2], 5, True)
+  def carrylsb(x,y):
+    if x&1 == y:
+      return x>>1
+    else:
+      return None
+else:
+  @factor([10], 5, True)
+  def carry(x):
     return x>>1
-  else:
-    return None
+
+  @factor([10], 2, True)
+  def lsb(x):
+    return x&1
+ 
 
 # x1, x2, x3, x4 -> x5
 @factor([2,2,2,2], 2, True)
@@ -107,7 +111,7 @@ def add_sha1_factors_for_round(G, i, bits=32):
         "O_%d_%d" % (i, j)])
 
     # this is the wrong way to do it, implement the real algorithm
-    if True:
+    if PU_COMPUTE:
       if j != bits-1:
         G.addFactor(carrylsb, [
           "O_%d_%d" % (i, j),
@@ -158,8 +162,9 @@ def build_sha1_FactorGraph(rounds, bits):
     FactorByte(G, "O_%d" % i, 10*10, bits)
     FactorByte(G, "C_%d" % i, 5*5, bits-1)
 
-    FactorByte(G, "T_%d" % (i+1), 16, bits)
-    FactorByte(G, "Pu_%d" % (i+1), 2, bits)
+    if PU_COMPUTE:
+      FactorByte(G, "T_%d" % (i+1), 16, bits)
+      FactorByte(G, "Pu_%d" % (i+1), 2, bits)
 
   for i in range(-4, rounds+1):
     FactorByte(G, "A_%d" % i, 2*2, bits)
@@ -213,9 +218,12 @@ def load_sha1_characteristic(G, name):
         if i < 5:
           G["A_%d_%d" % (i-4,31-j)].fix(c)
         else:
-          G["T_%d_%d" % (i-4,31-j)].fix(c)
-          #if j != 31:
-          G["Pu_%d_%d" % (i-4,j)].fix('1')
+          if PU_COMPUTE:
+            G["T_%d_%d" % (i-4,31-j)].fix(c)
+            #if j != 31:
+            G["Pu_%d_%d" % (i-4,j)].fix('1')
+          else:
+            G["A_%d_%d" % (i-4,31-j)].fix(c)
 
     if len(lnn) > 2:
       # w
