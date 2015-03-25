@@ -135,23 +135,6 @@ def add_sha1_factors_for_round(G, i, bits=32):
           "O_%d_%d" % (i, j),
           "C_%d_%d" % (i, j)])
 
-
-class FactorByte(object):
-  def __init__(self, G, name, dim, bits):
-    self.G = G
-    self.name = name
-    self.variables = [G.addVariable("%s_%d" % (name, i), dim) for i in range(bits)]
-  
-  def __getitem__(self, key):
-    return self.variables[key]
-      
-  def fix(self, s):
-    for v, c in zip(self.variables, s[::-1]):
-      v.fix(c)
-  
-  def __str__(self):
-    return ''.join(map(str, self.variables))[::-1]
-
 def build_sha1_FactorGraph(rounds, bits):
   G = FactorGraph()
 

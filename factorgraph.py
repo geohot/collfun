@@ -155,7 +155,7 @@ class Factor(object):
     for rv in rvs:
       rv.inFactors.append(self)
 
-  def compute(self):
+  def compute(self, debug=False):
     # if all the variables are computed except one
     if sum(map(lambda x: x.probs != None, self.rvs)) == len(self.rvs)-1:
       target_idx = map(lambda x: x.probs, self.rvs).index(None)
@@ -171,7 +171,8 @@ class Factor(object):
           mat = nmat
 
       self.rvs[target_idx].setProbs(list(mat))
-      #print "setting ", self.rvs[-1].name, self.rvs[-1].probs
+      if debug:
+        print "setting ", self.rvs[-1].name, self.rvs[-1].probs
       return True
     return False
 
@@ -214,7 +215,7 @@ class FactorGraph(object):
 
     return g
 
-  def compute(self):
+  def compute(self, debug=False):
     did_compute = True
     start = time.time()
     rounds = 0
@@ -223,7 +224,7 @@ class FactorGraph(object):
       rounds += 1
       did_compute = False
       for f in self.factors:
-        if f.compute():
+        if f.compute(debug):
           var += 1
           did_compute = True
     print "%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start)
@@ -239,4 +240,20 @@ class FactorGraph(object):
     self.factors.append(ret)
     return ret
 
+
+class FactorByte(object):
+  def __init__(self, G, name, dim, bits):
+    self.G = G
+    self.name = name
+    self.variables = [G.addVariable("%s_%d" % (name, i), dim) for i in range(bits)]
+  
+  def __getitem__(self, key):
+    return self.variables[key]
+      
+  def fix(self, s):
+    for v, c in zip(self.variables, s[::-1]):
+      v.fix(c)
+  
+  def __str__(self):
+    return ''.join(map(str, self.variables))[::-1]
 
