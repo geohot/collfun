@@ -1,12 +1,6 @@
 import time
 from factorgraph import *
 
-# *** null factor ***
-
-@factor([], 2)
-def zero():
-  return 0
-
 # *** boolean function factors ***
 
 # b,c,d -> f
@@ -62,18 +56,46 @@ def add_1_c2(w, a, f, e, c0, c1):
 
 add_1 = [add_1_c0, add_1_c1, add_1_c2]
 
+# *** characterisic factors ***
+
+@factor([2,2], 2)
+def c_zero(a, b):
+  return (a == 0) and (b == 0)
+
+@factor([2,2], 2)
+def c_one(a, b):
+  return (a == 1) and (b == 1)
+
+@factor([2,2], 2)
+def c_plus(a, b):
+  return (a == 0) and (b == 1)
+
+@factor([2,2], 2)
+def c_minus(a, b):
+  return (a == 1) and (b == 0)
+
+@factor([2,2], 2)
+def c_equal(a, b):
+  return ((a == 0) and (b == 0)) or \
+         ((a == 1) and (b == 1))
+
+@factor([2,2], 2)
+def c_x(a, b):
+  return ((a == 0) and (b == 1)) or \
+         ((a == 1) and (b == 0))
+
 # *** functions to set up factors ***
 
-def add_sha1_factors_for_round(G, i, bits=32):
+def add_sha1_factors_for_round(G, i, bits=32, prefix=""):
   fxn = [f_if, f_xor, f_maj, f_xor][i/20]
   k = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
 
   for j in range(bits):
     G.addFactor(fxn, [
-      "A_%d_%d" % (i-3, (j+2) % bits),
-      "A_%d_%d" % (i-2, (j+2) % bits),
-      "A_%d_%d" % (i-1, j),
-      "F_%d_%d" % (i, j)])
+      "%sA_%d_%d" % (prefix, i-3, (j+2) % bits),
+      "%sA_%d_%d" % (prefix, i-2, (j+2) % bits),
+      "%sA_%d_%d" % (prefix, i-1, j),
+      "%sF_%d_%d" % (prefix, i, j)])
 
   for j in range(0, bits):
     fxn = [add_0, add_1][(k>>j)&1]
@@ -81,70 +103,62 @@ def add_sha1_factors_for_round(G, i, bits=32):
       C1 = "zero"
       C2 = "zero"
     elif j == 1:
-      C1 = "C1_%d_%d" % (i, j-1)
+      C1 = "%sC1_%d_%d" % (prefix, i, j-1)
       C2 = "zero"
     else:
-      C1 = "C1_%d_%d" % (i, j-1)
-      C2 = "C2_%d_%d" % (i, j-2)
+      C1 = "%sC1_%d_%d" % (prefix, i, j-1)
+      C2 = "%sC2_%d_%d" % (prefix, i, j-2)
 
     G.addFactor(fxn[0], [
-      "A_%d_%d" % (i-4, (j+2) % bits),
-      "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-      "F_%d_%d" % (i, j),
-      "W_%d_%d" % (i, j),
+      "%sA_%d_%d" % (prefix, i-4, (j+2) % bits),
+      "%sA_%d_%d" % (prefix, i-0, (j+(bits-5)) % bits),
+      "%sF_%d_%d" % (prefix, i, j),
+      "%sW_%d_%d" % (prefix, i, j),
       C1, C2,
-      "A_%d_%d" % (i+1, j)])
+      "%sA_%d_%d" % (prefix, i+1, j)])
 
     if j < bits-1:
       G.addFactor(fxn[1], [
-        "A_%d_%d" % (i-4, (j+2) % bits),
-        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-        "F_%d_%d" % (i, j),
-        "W_%d_%d" % (i, j),
+        "%sA_%d_%d" % (prefix, i-4, (j+2) % bits),
+        "%sA_%d_%d" % (prefix, i-0, (j+(bits-5)) % bits),
+        "%sF_%d_%d" % (prefix, i, j),
+        "%sW_%d_%d" % (prefix, i, j),
         C1, C2,
-        "C1_%d_%d" % (i, j)])
+        "%sC1_%d_%d" % (prefix, i, j)])
 
     if j < bits-2:
       G.addFactor(fxn[2], [
-        "A_%d_%d" % (i-4, (j+2) % bits),
-        "A_%d_%d" % (i-0, (j+(bits-5)) % bits),
-        "F_%d_%d" % (i, j),
-        "W_%d_%d" % (i, j),
+        "%sA_%d_%d" % (prefix, i-4, (j+2) % bits),
+        "%sA_%d_%d" % (prefix, i-0, (j+(bits-5)) % bits),
+        "%sF_%d_%d" % (prefix, i, j),
+        "%sW_%d_%d" % (prefix, i, j),
         C1, C2,
-        "C2_%d_%d" % (i, j)])
+        "%sC2_%d_%d" % (prefix, i, j)])
       
-def build_sha1_FactorGraph(rounds, bits):
-  G = FactorGraph()
-
-  # zero factor
-  G.addVariable("zero", 2)
-  G.addFactor(zero, ["zero"])
-
+def build_sha1_FactorGraph(G, rounds, bits, prefix=""):
   # add W's, F's, C's
   for i in range(rounds):
-    FactorByte(G, "W_%d" % i, 2, bits)
-    FactorByte(G, "F_%d" % i, 2, bits)
-    FactorByte(G, "C1_%d" % i, 2, bits-1)
-    FactorByte(G, "C2_%d" % i, 2, bits-2)
+    FactorByte(G, "%sW_%d" % (prefix, i), 2, bits)
+    FactorByte(G, "%sF_%d" % (prefix, i), 2, bits)
+    FactorByte(G, "%sC1_%d" % (prefix, i), 2, bits-1)
+    FactorByte(G, "%sC2_%d" % (prefix, i), 2, bits-2)
 
-  A = [FactorByte(G, "A_%d" % i, 2, bits) for i in range(-4, rounds+1)]
+  A = [FactorByte(G, "%sA_%d" % (prefix, i), 2, bits) for i in range(-4, rounds+1)]
 
   # add linear W factors
   for i in range(16, rounds):
     for j in range(bits):
       G.addFactor(xor5, [
-        "W_%d_%d" % (i-16, j),
-        "W_%d_%d" % (i-14, j),
-        "W_%d_%d" % (i-8, j),
-        "W_%d_%d" % (i-3, j),
-        "W_%d_%d" % (i, (j+1) % bits)])
+        "%sW_%d_%d" % (prefix, i-16, j),
+        "%sW_%d_%d" % (prefix, i-14, j),
+        "%sW_%d_%d" % (prefix, i-8, j),
+        "%sW_%d_%d" % (prefix, i-3, j),
+        "%sW_%d_%d" % (prefix, i, (j+1) % bits)])
 
   # add boolean F factors
   # add addition bullshit
   for i in range(rounds):
-    add_sha1_factors_for_round(G, i, bits)
-
-  return G
+    add_sha1_factors_for_round(G, i, bits, prefix)
 
 W_hello = [1751477356, 1870659584, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40]
 A_iv = [256608195, 1086935512, 1659597818, 4023233417, 1732584193]
@@ -169,7 +183,8 @@ def dump(G, name = "A", start = -4, end = 81):
   return map(lambda x: int(x, 2), out)
 
 if __name__ == "__main__":
-  G = build_sha1_FactorGraph(80, 32)
+  G = FactorGraph()
+  build_sha1_FactorGraph(G, 80, 32)
 
   G.reset()
   load_sha1_example_data(G)

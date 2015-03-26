@@ -182,6 +182,10 @@ class FactorGraph(object):
     self.variables = {}
     self.factors = []
 
+    # zero factor
+    self.addVariable("zero", 2)
+    self.addFactor(np.array([ 1.,  0.]), ["zero"])
+
   def __getitem__(self, key):
     return self.variables[key]
 
