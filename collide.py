@@ -30,6 +30,23 @@ def load_characteristics(name):
       w.append(Characteristic(lnn[2]))
   return a,w
 
+def b(x):
+  return bin(x)[2:].rjust(32, '0')
+
+def load_characteristic_with_round(name):
+  cA, cW = {}, {}
+
+  for ln in open('ms_char').read().split("\n"):
+    lnn = ln.split(" ")
+    if len(lnn) > 1:
+      rnd = int(lnn[0][:-1])
+      cA[rnd] = lnn[1]
+      if len(lnn) == 3:
+        cW[rnd] = lnn[2]
+
+  return cA, cW
+
+
 """
 A,W = load_characteristics("dc_char")
 
@@ -53,6 +70,13 @@ for i in range(-4, len(A)-4):
 def tonum(a, endian="big"):
   return list(struct.unpack(("!" if endian == "big" else "")+"I"*(len(a)/4), a))
 
+
+def tomsg(s):
+  il = len(s)*8
+  s += "\x80"
+  s += "\x00"*(14*4-len(s))
+  s += struct.pack("!Q", il)
+  return tonum(s)
 
 
 def rl(a, i):
@@ -92,10 +116,9 @@ def sha1(w, iv=None):
   """Compute SHA-1 over w and return q"""
   if iv == None:
     iv = tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
-    q = [rr(iv[4], 30), rr(iv[3], 30), rr(iv[2], 30), iv[1], iv[0]]
+  q = [rr(iv[4], 30), rr(iv[3], 30), rr(iv[2], 30), iv[1], iv[0]]
   #iv = tonum("4633027d75b7a647d7e23d71915954dc3b81f936".decode("hex"))
 
-  q = iv[:]
 
   #print "Q", q
 
@@ -113,6 +136,13 @@ def sha1(w, iv=None):
     qt1 += rl(q[-5], 30)
     q.append(qt1 & 0xFFFFFFFF)
   return q
+
+def sha1_output(q):
+  return [(q[-1] + q[4]) & 0xFFFFFFFF,
+          (q[-2] + q[3]) & 0xFFFFFFFF,
+          (rl(q[-3], 30) + rl(q[2], 30)) & 0xFFFFFFFF,
+          (rl(q[-4], 30) + rl(q[1], 30)) & 0xFFFFFFFF,
+          (rl(q[-5], 30) + rl(q[0], 30)) & 0xFFFFFFFF]
 
 
 def dv_to_differential(dv):
