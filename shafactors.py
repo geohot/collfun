@@ -8,7 +8,6 @@ from factorgraph import *
 
 start = time.time()
 
-PU_COMPUTE = False
 
 # b,c,d -> f
 @factor([2,2,2], 2, True)
@@ -42,22 +41,21 @@ def add_1(w, a, f, e):
 def addc_1(w, a, f, e, c_in):
   return w+a+f+e+c_in+1
 
-if PU_COMPUTE:
-  # this shouldn't exist
-  @factor([10, 2], 5, True)
-  def carrylsb(x,y):
-    if x&1 == y:
-      return x>>1
-    else:
-      return None
-else:
-  @factor([10], 5, True)
-  def carry(x):
+# this shouldn't exist
+@factor([10, 2], 5, True)
+def carrylsb(x,y):
+  if x&1 == y:
     return x>>1
+  else:
+    return None
 
-  @factor([10], 2, True)
-  def lsb(x):
-    return x&1
+@factor([10], 5, True)
+def carry(x):
+  return x>>1
+
+@factor([10], 2, True)
+def lsb(x):
+  return x&1
  
 
 # x1, x2, x3, x4 -> x5
@@ -80,7 +78,7 @@ print "built factor matrices in %f s" % (time.time()-start)
 #   F_(0,79)_(0,31)   -- 80*32 --  4 states
 #   C_(0,79)_(0,30)   -- 80*31 -- 25 states
 
-def add_sha1_factors_for_round(G, i, bits=32):
+def add_sha1_factors_for_round(G, i, bits=32, pu_compute = False):
   fxn = [f_if, f_xor, f_maj, f_xor][i/20]
   k = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6][i/20]
 
@@ -111,7 +109,7 @@ def add_sha1_factors_for_round(G, i, bits=32):
         "O_%d_%d" % (i, j)])
 
     # this is the wrong way to do it, implement the real algorithm
-    if PU_COMPUTE:
+    if pu_compute:
       if j != bits-1:
         G.addFactor(carrylsb, [
           "O_%d_%d" % (i, j),

@@ -73,12 +73,13 @@ class Variable(object):
 
   CONDITIONS16 = '#0n3u5x71-ABCDE?'
 
-  def __init__(self, name, dim):
+  def __init__(self, name, dim, num):
     self.probs = None
     self.name = name
     self.dim = dim
     self.qt = None
     self.inFactors = []
+    self.num =  num
 
   def __str__(self):
     if self.probs == None:
@@ -181,10 +182,15 @@ class FactorGraph(object):
   def __init__(self):
     self.variables = {}
     self.factors = []
+    self.num = 0
 
     # zero factor
     self.addVariable("zero", 2)
     self.addFactor(np.array([ 1.,  0.]), ["zero"])
+
+    # one factor
+    self.addVariable("one", 2)
+    self.addFactor(np.array([ 0.,  1.]), ["one"])
 
   def __getitem__(self, key):
     return self.variables[key]
@@ -234,7 +240,8 @@ class FactorGraph(object):
     print "%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start)
 
   def addVariable(self, name, dim):
-    ret = Variable(name, dim)
+    self.num += 1
+    ret = Variable(name, dim, self.num)
     self.variables[name] = ret
     return ret
 

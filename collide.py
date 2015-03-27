@@ -112,11 +112,14 @@ def expand(w, this_round=0, total_length=80):
 
 
 
-def sha1(w, iv=None):
+def sha1(w, iv=None, rot=True):
   """Compute SHA-1 over w and return q"""
   if iv == None:
     iv = tonum("67452301efcdab8998badcfe10325476c3d2e1f0".decode("hex"))
-  q = [rr(iv[4], 30), rr(iv[3], 30), rr(iv[2], 30), iv[1], iv[0]]
+  if rot:
+    q = [rr(iv[4], 30), rr(iv[3], 30), rr(iv[2], 30), iv[1], iv[0]]
+  else:
+    q = iv[:]
   #iv = tonum("4633027d75b7a647d7e23d71915954dc3b81f936".decode("hex"))
 
 
