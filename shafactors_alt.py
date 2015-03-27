@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
   import collide
   tW = collide.expand(W_hello)
-  tA = collide.sha1(tW, A_iv)
+  tA = collide.sha1(tW)
 
   assert tW == dump(G, "W", 0, 80)
   assert tA == dump(G, "A", -4, 81)
