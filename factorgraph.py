@@ -237,7 +237,7 @@ class FactorGraph(object):
         if f.compute(debug):
           var += 1
           did_compute = True
-    print "%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start)
+    #print "%d variables computed in %d rounds in %f s" % (var, rounds, time.time()-start)
 
   def addVariable(self, name, dim):
     self.num += 1
